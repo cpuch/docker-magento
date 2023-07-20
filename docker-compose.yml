@@ -1,0 +1,147 @@
+version: '3.7'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php-fpm/Dockerfile
+      args:
+        - USERNAME=magento
+        - PASSWORD=magento
+        - UID=1000
+    image: php-fpm-base
+    container_name: php-fpm
+    networks:
+      - magento2
+    volumes:
+      - ./magento:/var/www/html/magento
+
+  db:
+    build:
+      context: .
+      dockerfile: docker/mariadb/Dockerfile
+    image: mariadb-base
+    environment:
+      - MARIADB_DATABASE=magento2
+      - MARIADB_USER=magento2
+      - MARIADB_PASSWORD=p@ssw0rd
+      - MARIADB_ROOT_PASSWORD=Rampalet
+    container_name: mariadb
+    networks:
+      - magento2
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+      args:
+        - USERNAME=magento
+        - PASSWORD=magento
+        - UID=1000
+    image: nginx-base
+    container_name: nginx
+    ports:
+      - "80:80"
+    networks:
+      - magento2
+    volumes_from:
+      - app
+    depends_on:
+      - db
+      - app
+      - opensearch-node1
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: mailhog
+    networks:
+      - magento2
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  rabbitmq:
+    image: rabbitmq:3.11.20
+    container_name: rabbitmq
+    networks:
+      - magento2
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+
+  # redis:
+  #   image: redis:7.0.12
+  #   container_name: redis
+  #   networks:
+  #     - magento2
+
+  opensearch-node1:
+    image: opensearchproject/opensearch:2.5.0
+    container_name: opensearch-node1
+    environment:
+      - discovery.type=single-node
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - plugins.security.disabled=true
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - 9200:9200
+      - 9600:9600
+    networks:
+      - magento2
+    volumes:
+      - opensearch-data1:/usr/share/opensearch/data
+
+  # opensearch-node2:
+  #   image: opensearchproject/opensearch:2.5.0
+  #   container_name: opensearch-node2
+  #   environment:
+  #     - cluster.name=opensearch-cluster
+  #     - node.name=opensearch-node2
+  #     - discovery.seed_hosts=opensearch-node1,opensearch-node2
+  #     - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
+  #     - bootstrap.memory_lock=true
+  #     - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+  #     - "DISABLE_INSTALL_DEMO_CONFIG=true"
+  #     - "DISABLE_SECURITY_PLUGIN=true"
+  #   ulimits:
+  #     memlock:
+  #       soft: -1 # Set memlock to unlimited (no soft or hard limit)
+  #       hard: -1
+  #     nofile:
+  #       soft: 65536 # Maximum number of open files for the opensearch user - set to at least 65536
+  #       hard: 65536
+  #   networks:
+  #     - magento2
+  #   volumes:
+  #     - opensearch-data2:/usr/share/opensearch/data
+
+  opensearch-dashboard:
+    image: opensearchproject/opensearch-dashboards:2.5.0
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch-node1:9200"]'
+    networks:
+      - magento2
+    depends_on:
+      - opensearch-node1
+
+networks:
+  magento2:
+volumes:
+  mysql-data:
+  opensearch-data1:
+  opensearch-data2:
