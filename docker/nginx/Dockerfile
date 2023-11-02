@@ -2,13 +2,13 @@
 FROM nginx:1.25.1
 
 # Les arguments utilisés pendant le build de l'image
-ARG USERNAME
-ARG PASSWORD
-ARG UID
+ARG MAGENTO_USERNAME
+ARG MAGENTO_PASSWORD
+ARG MAGENTO_UID
 
 # Définition des variables d'environnement
 ENV DEBIAN_FRONTEND=noninteractive
-ENV USERNAME=${USERNAME}
+ENV MAGENTO_USERNAME=${MAGENTO_USERNAME}
 
 # Installation des extenions PHP
 RUN apt update && \
@@ -17,20 +17,20 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 # Création de l'utilisateur
-RUN useradd -G sudo -u ${UID} -m ${USERNAME} \
-    && echo "${USERNAME}:${PASSWORD}" | chpasswd
+RUN useradd -G sudo -u ${MAGENTO_UID} -m ${MAGENTO_USERNAME} \
+    && echo "${MAGENTO_USERNAME}:${MAGENTO_PASSWORD}" | chpasswd
 
 # Copie des fichiers de configuration
 COPY ./docker/nginx/conf/nginx.conf /etc/nginx/nginx.conf
 COPY ./docker/nginx/conf/default.conf /etc/nginx/conf.d/default.conf
 
 # Définition des permissions
-RUN chown -R ${USERNAME}:${USERNAME} /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+RUN chown -R ${MAGENTO_USERNAME}:${MAGENTO_USERNAME} /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 RUN touch /var/run/nginx.pid && \
-    chown ${USERNAME}:${USERNAME} /var/run/nginx.pid
+    chown ${MAGENTO_USERNAME}:${MAGENTO_USERNAME} /var/run/nginx.pid
 
 # Définition de répertoire de travail
 WORKDIR /var/www/html/
 
 # Définition de l'utilisateur
-USER ${USERNAME}
+USER ${MAGENTO_USERNAME}

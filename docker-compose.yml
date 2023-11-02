@@ -1,20 +1,39 @@
 version: '3.7'
+
+# Services
 services:
+  # Magento
   app:
     build:
       context: .
       dockerfile: docker/php-fpm/Dockerfile
       args:
-        - USERNAME=magento
-        - PASSWORD=magento
-        - UID=1000
+        - MAGENTO_USERNAME=magento
+        - MAGENTO_PASSWORD=magento
+        - MAGENTO_UID=1000
     image: php-fpm-base
-    container_name: php-fpm
     networks:
       - magento2
     volumes:
       - ./magento:/var/www/html/magento
+    restart: always
+    deploy:
+      replicas: 3
+      mode: replicated
+      rollback_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
 
+    placement:
+      constraints:
+        - node.role==worker
+
+  # MariaDB
   db:
     build:
       context: .
@@ -25,24 +44,31 @@ services:
       - MARIADB_USER=magento2
       - MARIADB_PASSWORD=p@ssw0rd
       - MARIADB_ROOT_PASSWORD=Rampalet
-    container_name: mariadb
     networks:
       - magento2
     volumes:
       - mysql-data:/var/lib/mysql
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==worker
 
+  # Nginx
   nginx:
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
       args:
-        - USERNAME=magento
-        - PASSWORD=magento
-        - UID=1000
+        - MAGENTO_USERNAME=magento
+        - MAGENTO_PASSWORD=magento
+        - MAGENTO_UID=1000
     image: nginx-base
-    container_name: nginx
     ports:
       - "80:80"
+      - "443:443"
     networks:
       - magento2
     volumes_from:
@@ -51,34 +77,136 @@ services:
       - db
       - app
       - opensearch-node1
+      - redis-cache
+      - redis-sessions
+      - cron
+    restart: always
+    deploy:
+      replicas: 3
+      mode: replicated
+      rollback_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
+    placement:
+      constraints:
+        - node.role==manager
 
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    container_name: mailhog
+  # Cron
+  cron:
+    build:
+      context: .
+      dockerfile: docker/cron/Dockerfile
+      args:
+        - MAGENTO_USERNAME=magento
+        - MAGENTO_PASSWORD=magento
+        - MAGENTO_UID=1000
+    image: cron-base
+    networks:
+      - magento2
+    volumes:
+      - ./magento:/var/www/html/magento
+    depends_on:
+      - db
+      - app
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+      rollback_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        monitor: 5s
+    placement:
+      constraints:
+        - node.role==manager
+
+  # Mailpit
+  mailpit:
+    image: axllent/mailpit:v1.7.1
     networks:
       - magento2
     ports:
       - "1025:1025"
       - "8025:8025"
+    depends_on:
+      - nginx
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==manager
 
+  # Redis cache
+  redis-cache:
+    image: redis:7.0.12
+    networks:
+      - magento2
+    volumes:
+      - redis-cache:/data
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==worker
+
+  # Redis sessions
+  redis-sessions:
+    image: redis:7.0.12
+    networks:
+      - magento2
+    volumes:
+      - redis-sessions:/data
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==worker
+
+  # RabbitMQ
   rabbitmq:
+    build:
+      context: .
+      dockerfile: docker/rabbitmq/Dockerfile
+      args:
+        - RABBITMQ_DEFAULT_USER=admin
+        - RABBITMQ_DEFAULT_PASS=k6pipo.g
+        - RABBITMQ_DEFAULT_VHOST=magento
+#        - RABBITMQ_MAGENTO_USERNAME=magento
+#        - RABBITMQ_MAGENTO_PASSWORD=p@ssw0rd
     image: rabbitmq:3.11.20
-    container_name: rabbitmq
     networks:
       - magento2
     ports:
       - "15672:15672"
       - "5672:5672"
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==worker
 
-  # redis:
-  #   image: redis:7.0.12
-  #   container_name: redis
-  #   networks:
-  #     - magento2
-
+  # Opensearch Node
   opensearch-node1:
     image: opensearchproject/opensearch:2.5.0
-    container_name: opensearch-node1
     environment:
       - discovery.type=single-node
       - cluster.name=opensearch-cluster
@@ -100,48 +228,45 @@ services:
       - magento2
     volumes:
       - opensearch-data1:/usr/share/opensearch/data
+    restart: always
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==worker
 
-  # opensearch-node2:
-  #   image: opensearchproject/opensearch:2.5.0
-  #   container_name: opensearch-node2
-  #   environment:
-  #     - cluster.name=opensearch-cluster
-  #     - node.name=opensearch-node2
-  #     - discovery.seed_hosts=opensearch-node1,opensearch-node2
-  #     - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2
-  #     - bootstrap.memory_lock=true
-  #     - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-  #     - "DISABLE_INSTALL_DEMO_CONFIG=true"
-  #     - "DISABLE_SECURITY_PLUGIN=true"
-  #   ulimits:
-  #     memlock:
-  #       soft: -1 # Set memlock to unlimited (no soft or hard limit)
-  #       hard: -1
-  #     nofile:
-  #       soft: 65536 # Maximum number of open files for the opensearch user - set to at least 65536
-  #       hard: 65536
-  #   networks:
-  #     - magento2
-  #   volumes:
-  #     - opensearch-data2:/usr/share/opensearch/data
-
+  # Opensearch dashboard
   opensearch-dashboard:
     image: opensearchproject/opensearch-dashboards:2.5.0
-    container_name: opensearch-dashboards
     ports:
       - 5601:5601
     expose:
       - "5601"
     environment:
-      OPENSEARCH_HOSTS: '["http://opensearch-node1:9200"]'
+      - OPENSEARCH_HOSTS=["http://opensearch-node1:9200"]
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=admin
     networks:
       - magento2
     depends_on:
       - opensearch-node1
+    deploy:
+      replicas: 1
+      mode: replicated
+    placement:
+      constraints:
+        - node.role==manager
 
+# Networks
 networks:
   magento2:
+
+# Volumes
 volumes:
   mysql-data:
   opensearch-data1:
-  opensearch-data2:
+#  opensearch-data2:
+  rabbitmq:
+  redis-cache:
+  redis-sessions:
