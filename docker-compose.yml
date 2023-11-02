@@ -15,7 +15,7 @@ services:
     networks:
       - magento2
     volumes:
-      - ./magento:/var/www/html/magento
+      - /data/efs/magento:/var/www/html/magento
     restart: always
     deploy:
       replicas: 3
@@ -28,10 +28,9 @@ services:
         parallelism: 1
         order: start-first
         monitor: 5s
-
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # MariaDB
   db:
@@ -47,14 +46,14 @@ services:
     networks:
       - magento2
     volumes:
-      - mysql-data:/var/lib/mysql
+      - /data/efs/mysql:/var/lib/mysql
     restart: always
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # Nginx
   nginx:
@@ -71,8 +70,8 @@ services:
       - "443:443"
     networks:
       - magento2
-    volumes_from:
-      - app
+    volumes:
+      - /data/efs/magento:/var/www/html/magento
     depends_on:
       - db
       - app
@@ -92,9 +91,9 @@ services:
         parallelism: 1
         order: start-first
         monitor: 5s
-    placement:
-      constraints:
-        - node.role==manager
+      placement:
+        constraints:
+          - node.role==manager
 
   # Cron
   cron:
@@ -109,7 +108,7 @@ services:
     networks:
       - magento2
     volumes:
-      - ./magento:/var/www/html/magento
+      - /data/efs/magento:/var/www/html/magento
     depends_on:
       - db
       - app
@@ -125,9 +124,9 @@ services:
         parallelism: 1
         order: start-first
         monitor: 5s
-    placement:
-      constraints:
-        - node.role==manager
+      placement:
+        constraints:
+          - node.role==manager
 
   # Mailpit
   mailpit:
@@ -143,9 +142,9 @@ services:
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==manager
+      placement:
+        constraints:
+          - node.role==manager
 
   # Redis cache
   redis-cache:
@@ -153,14 +152,14 @@ services:
     networks:
       - magento2
     volumes:
-      - redis-cache:/data
+      - /data/efs/redis-cache:/data
     restart: always
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # Redis sessions
   redis-sessions:
@@ -168,14 +167,14 @@ services:
     networks:
       - magento2
     volumes:
-      - redis-sessions:/data
+      - /data/efs/redis-sessions:/data
     restart: always
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # RabbitMQ
   rabbitmq:
@@ -195,14 +194,14 @@ services:
       - "15672:15672"
       - "5672:5672"
     volumes:
-      - rabbitmq:/var/lib/rabbitmq
+      - /data/efs/rabbitmq:/var/lib/rabbitmq
     restart: always
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # Opensearch Node
   opensearch-node1:
@@ -232,9 +231,9 @@ services:
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==worker
+      placement:
+        constraints:
+          - node.role==worker
 
   # Opensearch dashboard
   opensearch-dashboard:
@@ -254,9 +253,9 @@ services:
     deploy:
       replicas: 1
       mode: replicated
-    placement:
-      constraints:
-        - node.role==manager
+      placement:
+        constraints:
+          - node.role==manager
 
 # Networks
 networks:
@@ -264,9 +263,9 @@ networks:
 
 # Volumes
 volumes:
-  mysql-data:
-  opensearch-data1:
+#  mysql-data:
+#  opensearch-data1:
 #  opensearch-data2:
-  rabbitmq:
-  redis-cache:
-  redis-sessions:
+#  rabbitmq:
+#  redis-cache:
+#  redis-sessions:
